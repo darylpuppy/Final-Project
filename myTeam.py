@@ -94,19 +94,18 @@ class DummyAgent(CaptureAgent):
 
     return random.choice(actions)
 
-#Base class that implements some useful functions
 class SmartAgent(CaptureAgent):
-	actions = {"Stop": (0,0), "North": (0,1), "East": (1,0), "South": (0,-1), "West": (-1,0)}		#All the actions a Pacman can take and how it moves the Pacman
+	actions = {"Stop": (0,0), "North": (0,1), "East": (1,0), "South": (0,-1), "West": (-1,0)}
 
-	#Initialization stuff. Creates some variables and figures out where the boundary between either side is.
 	def registerInitialState(self, gameState):
 		CaptureAgent.registerInitialState(self, gameState)
 
 		self.teamIndices = CaptureAgent.getTeam(self, gameState)
 		self.opponentIndices = CaptureAgent.getOpponents(self, gameState)
+		self.lastSeen = [None, None]
 		self.enemyPos = [None, None]
 
-		position = gameState.getAgentPosition(self.index)		#This figures out where the boundary between either side is
+		position = gameState.getAgentPosition(self.index)
 		gameMap = gameState.getWalls()
 		boundary = gameMap.width / 2
 		if position[0] < boundary:
@@ -116,13 +115,14 @@ class SmartAgent(CaptureAgent):
 			self.leftEdge = boundary
 			self.rightEdge = gameMap.width
 
-	#Gets information that is useful for determining an action
 	def actionPrep(self, gameState):
-		self.enemyPos = (gameState.getAgentPosition(self.opponentIndices[0]), gameState.getAgentPosition(self.opponentIndices[1]))		#Get the position of each enemy
-		self.enemyDist = [util.manhattanDistance(gameState.getAgentPosition(self.index), self.enemyPos[i]) for i in range(2)]		#Get the manhattan distance to each enemy
+		self.enemyPos = (gameState.getAgentPosition(self.opponentIndices[0]), gameState.getAgentPosition(self.opponentIndices[1]))
+		if self.enemyPos[0] is not None:
+			self.lastSeen[0] = self.enemyPos[0]
+		if self.enemyPos[1] is not None:
+			self.lastSeen[1] = self.enemyPos[1]
 
-	#Standard A* search. Literally copied from project 1
-	def aStarSearch(self, gameState, isGoal, heuristic, costFunction):
+	def aStarSearch(self, gameState, isGoal, heuristic, defense = False):
 	    """Search the node that has the lowest combined cost and heuristic first."""
 	    visited = []    #Set up the initial state for A*
 	    path = {}
@@ -139,7 +139,7 @@ class SmartAgent(CaptureAgent):
 	        if curPosition[0] not in visited:
 	            visited.append(curPosition[0])    #If we haven't visited it, mark it as visited
 	            
-	            successors = self.getSuccessors(curPosition[0], walls, costFunction, gameState)
+	            successors = self.getSuccessors(curPosition[0], walls)
 	            for node in successors:
 	                if node[0] not in visited:
 	                    if (node[0] not in path) or (path[node[0]][2] > (curPosition[1] + node[2])):
@@ -148,76 +148,82 @@ class SmartAgent(CaptureAgent):
 	            
 	    ans = []
 	    curPosition = curPosition[0]
+	    if not self.isHome(curPosition) and defense:
+	    	print curPosition
+	    	print isGoal(position, gameState, True)
 	    while curPosition != position:  #Until we reach the starting state, push actions into the beginning of the answer
 	        ans.insert(0, path[curPosition][1])
 	        curPosition = path[curPosition][0]
 	    return ans
 
-	#Determine if the Pacman in on it's home side or on the enemies side
 	def isHome(self, position):
 		if position is None:
 			return False
 		else:
 			return position[0] >= self.leftEdge and position[0] < self.rightEdge
 
-	#Determines whether a pellet is on the given location
 	def isPellet(self, position, gameState):
 		return position in self.getFood(gameState).asList()
 
-	#Gets the manhattan distance to the closest enemy
 	def enemyDistance(self, position, gameState):
 		return min(util.manhattanDistance(position, self.enemyPos[i]) for i in range(2))
 
-	#Get all the legal positions the Pacman can be after one move and the action to get there
-	def getSuccessors(self, position, walls, costFunction, gameState):
+	def getSuccessors(self, position, walls):
 		nextStates = []
-		for action in self.actions:		#Loop through all legal actions
-			nextPos = (position[0] + self.actions[action][0], position[1] + self.actions[action][1])		#Find out where the Pacman would be
-			if nextPos not in walls:		#Make sure the Pacman wouldn't move into a wall
-				nextStates.append((nextPos, action, costFunction(position, gameState)))
+		for action in self.actions:
+			nextPos = (position[0] + self.actions[action][0], position[1] + self.actions[action][1])
+			if nextPos not in walls:
+				nextStates.append((nextPos, action, 1))
 		return nextStates
 
-#An implementation of SmartAgent that focuses solely on defense
+	def getManhattanDistance(self, position1, position2):
+		if not position1 is None and not position2 is None:
+			return util.manhattanDistance(position1, position2)
+		else:
+			return 9999999
+
 class DefenseAgent(SmartAgent):
 	def registerInitialState(self, gameState):
 		SmartAgent.registerInitialState(self, gameState)
 
-	#Method that figures out what the best action would be
 	def chooseAction(self, gameState):
 		self.actionPrep(gameState)
-		actions = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic, self.defenseCost)		#Use the A* search to find the best path, to a goal, given those functions
-		if len(actions) == 0:		#If the length of the actions is 0, we are already at a goal state, so just stay there
+		actions = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic, True)
+		if len(actions) == 0:
 			return "Stop"
-		else:		#Otherwise, take teh first step in reaching the goal
+		else:
 			return actions[0]
 
-	#A function that estimates the distance to a defensive goal state
 	def defenseHeuristic(self, position, gameState, initialPosition):
-		if self.isHome(self.enemyPos[0]) or self.isHome(self.enemyPos[1]):		#If either of the enemies is on your home side, return the manhattan distance to the closest of them
-			return min(util.manhattanDistance(position, self.enemyPos[i]) for i in range(2) if self.isHome(self.enemyPos[i]))
-		else:		#Otherwise, return the manhattan distance to the location on the home side closest to one of them
-			estimate = 0		#The estimated distance
-			if self.leftEdge == 0:		#If leftEdge is 0, rightEdge marks the boundary we don't want to cross
-				if position[0] < self.rightEdge:		#Get the straight line distance to the border
+		if self.isHome(self.lastSeen[0]) or self.isHome(self.lastSeen[1]):
+			return min(self.getManhattanDistance(position, self.lastSeen[i]) for i in range(2))
+		else:
+			estimate = 0
+			if self.leftEdge == 0:
+				if position[0] < self.rightEdge:
 					estimate += self.rightEdge - position[0]
 				else:
-					estimate += position[0] - self.rightEdge
+					estimate += position[0] - self.rightEdge + 10
 			else:
-				if position[0] > self.leftEdge:		#Same as above, but this time leftEdge is the boundary we don't want to cross
+				if position[0] > self.leftEdge:
 					estimate += position[0] - self.leftEdge
 				else:
 					estimate += self.leftEdge - position[0] + 10
-			if util.manhattanDistance(position, self.enemyPos[0]) < util.manhattanDistance(position, self.enemyPos[1]):		#Add the manhattan distance to the closest enemy to the estimate
-				estimate += util.manhattanDistance(position, self.enemyPos[0])
+			if self.lastSeen[0] is None and self.lastSeen[1] is None:
+				return estimate
 			else:
-				estimate += util.manhattanDistance(position, self.enemyPos[1])
+				if self.getManhattanDistance(position, self.lastSeen[0]) < self.getManhattanDistance(position, self.lastSeen[1]):
+					estimate += self.getManhattanDistance(position, self.lastSeen[0])
+				else:
+					estimate += self.getManhattanDistance(position, self.lastSeen[1])
 			return estimate
 
-	#Determines whether a position is a defensive goal state
-	def defenseGoal(self, position, gameState):
-		if self.isHome(self.enemyPos[0]) or self.isHome(self.enemyPos[1]):		#If either enemy is on the home side, they are the only goal states
-			return position in self.enemyPos and self.isHome(position)
-		else:		#Try to move to a position on the home side closest to the enemy
+	def defenseGoal(self, position, gameState, printGoal = False):
+		if self.isHome(self.lastSeen[0]) or self.isHome(self.lastSeen[1]):
+			if printGoal:
+				print "Going after internal enemy", self.lastSeen[0], self.lastSeen[1]
+			return position in self.lastSeen and self.isHome(position)
+		else:
 			walls = gameState.getWalls()
 			height = walls.height
 			walls = walls.asList()
@@ -226,33 +232,35 @@ class DefenseAgent(SmartAgent):
 			else:
 				boundary = self.leftEdge
 
-			#Search for the best spot according to the above rule
-			bestSpot = (boundary, 0)
-			bestDist = 999999
-			for i in range(height):		#Loop through all legal positions on the boundary
-				if (boundary, i) in walls:
-					continue
-				closestEnemy = min(util.manhattanDistance((boundary, i), self.enemyPos[j]) for j in range(2))
-				if closestEnemy < bestDist:
-					bestSpot = (boundary, i)
-					bestDist = closestEnemy
-			return position == bestSpot
-
-	#Returns the cost of moving to a position
-	def defenseCost(self, position, gameState):
-		if not self.isHome(position):		#If we're not home, getting close to an enemy is very bad
-			closestEnemy = min(self.enemyDist)
-			if closestEnemy < 3:		#All these values were arbitrarily chosen
-				return 9
-			elif closestEnemy < 5:
-				return 4
+			if self.lastSeen[0] is None and self.lastSeen[1] is None:
+				base = height / 2
+				dist = 0
+				while True:
+					if (boundary, base + dist) not in walls:
+						if printGoal:
+							print "Centering", (boundary, base + dist)
+						return position == (boundary, base + dist)
+					elif (boundary, base - dist) not in walls:
+						if printGoal:
+							print "Centering", (boundary, base - dist)
+						return position == (boundary, base - dist)
+					else:
+						dist += 1
 			else:
-				return 1		#If there is no nearby enemy, there is no issue going onto the opponents side
-		else:
-			return 1
+				bestSpot = (boundary, 0)
+				bestDist = 999999
+				for i in range(height):
+					if (boundary, i) in walls:
+						continue
+					closestEnemy = min(self.getManhattanDistance((boundary, i), self.lastSeen[j]) for j in range(2))
+					if closestEnemy < bestDist:
+						bestSpot = (boundary, i)
+						bestDist = closestEnemy
 
+				if printGoal:
+					print "Going towards external enemy", bestSpot
+				return position == bestSpot
 
-#Agent that crosses onto the other side to steal one pellet at a time
 class ThiefAgent(SmartAgent):
 
 	def registerInitialState(self, gameState):
@@ -261,72 +269,49 @@ class ThiefAgent(SmartAgent):
 		self.hasPellet = False
 		self.start = gameState.getAgentPosition(self.index)
 
-	#Gets the best action to take
 	def chooseAction(self, gameState):
 		self.actionPrep(gameState)
 		pellets = self.getFood(gameState).asList()
 		position = gameState.getAgentPosition(self.index)
-		if position == self.start:		#If we're at the starting position, we were killed so we don't have a pellet
+		if position == self.start:
 			self.hasPellet = False
 
-		if self.hasPellet:		#If we have a pellet, we want to move to the home side
-			action = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)[0]
-		else:		#Otherwise, we look for the closest one
-			action = self.aStarSearch(gameState, self.isPellet, self.pelletHeuristic, self.offenseCost)[0]
+		if self.hasPellet:
+			action = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic)[0]
+		else:
+			action = self.aStarSearch(gameState, self.isPellet, self.pelletHeuristic)[0]
 
-		if self.isGoal((position[0] + self.actions[action][0], position[1] + self.actions[action][1]), gameState):	#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
+		if self.isGoal((position[0] + self.actions[action][0], position[1] + self.actions[action][1]), gameState):
 			self.hasPellet = not self.hasPellet
 
 		return action
 
-	#Determines whether or not a position is an offensive goal state
 	def isGoal(self, position, gameState):
-		if self.hasPellet:	#If we have a pellet, we're trying to go home
-			return self.isHome(pellet)
-		else:	#Otherwise we're trying to get one
+		if self.hasPellet:
+			if position[0] >= self.leftEdge and position[0] < self.rightEdge:
+				return True
+			else:
+				return False
+		else:
 			return position in self.getFood(gameState).asList()
 
-	#Finds the cost of moving to a given position
-	def offenseCost(self, position, gameState):
-		if self.isHome(position):	#If we're home, we want to move close to enemies
-			enemyCosts = [-15, -7, 0]
-		else:	#Otherwise, we want to avoid them
-			enemyCosts = [30, 15, 0]
-
-		partnerDist = util.manhattanDistance(gameState.getAgentPosition(self.teamIndices[0]), gameState.getAgentPosition(self.teamIndices[1]))	#Get the distance to a partner
-		if partnerDist < 5:	#We don't want to move too close to our partner, because that makes it easier for a defender
-			cost = 10
-		else:
-			cost = 0
-
-		closestEnemy = min(self.enemyDist)
-		if closestEnemy < 3:	#Get the appropriate cost for moving close to an enemy based on whether or not we're home
-			cost += enemyCosts[0]
-		elif closestEnemy < 6:
-			cost += enemyCosts[1]
-		else:
-			cost += enemyCosts[2]
-
-		return cost + 1	#Add one to the cost for the actual movement
-
-	#Estimate for cost to reach closest pellet
 	def pelletHeuristic(self, position, gameState, initialPosition):
 		minDistance = 99999
-		time = self.getMazeDistance(initialPosition, position)	#The number of moves it takes to get to the current position
+		time = self.getMazeDistance(initialPosition, position)
 		pellets = self.getFood(gameState).asList()
-		for pellet in pellets:	#Find the distance to the closest pellet
+		for pellet in pellets:
 			if util.manhattanDistance(position, pellet) < minDistance:
 				minDistance = util.manhattanDistance(position, pellet)
 
-		partnerDist = util.manhattanDistance(gameState.getAgentPosition(self.teamIndices[0]), gameState.getAgentPosition(self.teamIndices[1]))
-		if partnerDist < 5:	#Try to avoid moving too close to our partner
-			minDistance += 10
+		partnerDist = self.getManhattanDistance(gameState.getAgentPosition(self.teamIndices[0]), gameState.getAgentPosition(self.teamIndices[1]))
+		if partnerDist < 5:
+			minDistance += 5
 
-		enemyDist = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]
+		enemyDist = [self.getManhattanDistance(position, self.lastSeen[i]) for i in range(2)]
 		for i in range(2):
 			if enemyDist[i] == 0:
 				if time < 3:
-					minDistance += 60	#It's worse to move close to an enemy in the near future because they won't have moved very far
+					minDistance += 60
 				else:
 					minDistance += 20
 			elif enemyDist[i] < 3:
