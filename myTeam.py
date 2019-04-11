@@ -22,6 +22,8 @@ import game
 # Team creation #
 #################
 
+red = False
+
 def createTeam(firstIndex, secondIndex, isRed,
                first = 'ThiefAgent', second = 'DefenseAgent'):
   """
@@ -40,6 +42,7 @@ def createTeam(firstIndex, secondIndex, isRed,
   """
 
   # The following line is an example only; feel free to change it.
+  red = isRed
   if isRed:
   	return [eval(first)(firstIndex), eval(second)(secondIndex)]
   else:
@@ -283,43 +286,65 @@ class ThiefAgent(SmartAgent):
 		if self.hasPellet:		#If we have a pellet, we want to move to the home side
 			action = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)[0]
 		else:		#Otherwise, we look for the closest one
-			action = self.aStarSearch(gameState, self.isPellet, self.pelletHeuristic, self.offenseCost)[0]
+			action = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)[0]
 
-		if self.isGoal((position[0] + self.actions[action][0], position[1] + self.actions[action][1]), gameState):	#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
-			self.hasPellet = not self.hasPellet
+		if self.isHome((position[0] + self.actions[action][0], position[1] + self.actions[action][1])):	#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
+			self.hasPellet = False
+		if self.isPellet((position[0] + self.actions[action][0], position[1] + self.actions[action][1]), gameState):	#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
+			self.hasPellet = True
 
 		return action
 
 	#Determines whether or not a position is an offensive goal state
 	def isGoal(self, position, gameState):
-		if self.hasPellet:	#If we have a pellet, we're trying to go home
+		enemyDists = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]
+		closeEnemy = min(enemyDists)
+		if self.hasPellet:
+			return (self.isHome(position) or self.isPellet(position, gameState)) and closeEnemy > 2
+		else:
+			return self.isPellet(position, gameState)
+		"""if self.hasPellet:	#If we have a pellet, we're trying to go home
 			return self.isHome(position)
 		else:	#Otherwise we're trying to get one
-			return position in self.getFood(gameState).asList()
+			return position in self.getFood(gameState).asList()"""
 
 	#Finds the cost of moving to a given position
 	def offenseCost(self, position, gameState):
 		cost = 0
 
+		partnerDist = util.manhattanDistance(gameState.getAgentPosition(self.teamIndices[0]), gameState.getAgentPosition(self.teamIndices[1]))
+		if partnerDist < 4:
+			cost += 10
+
 		enemyDist = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]	#Can be used later to move towards an enemy on the home side
-		if enemyDist[0] < enemyDist[1]:
-			closeEnemy = self.enemyPos[0]
-			dist = enemyDist[0]
+		if self.isHome(self.enemyPos[0]) == self.isHome(self.enemyPos[1]):
+			if enemyDist[0] < enemyDist[1]:
+				closeEnemy = self.enemyPos[0]
+				dist = enemyDist[0]
+			else:
+				closeEnemy = self.enemyPos[1]
+				dist = enemyDist[1]
 		else:
-			closeEnemy = self.enemyPos[1]
-			dist = enemyDist[1]
+			if self.isHome(self.enemyPos[0]):
+				closeEnemy = self.enemyPos[1]
+				dist = enemyDist[1]
+			else:
+				closeEnemy = self.enemyPos[0]
+				dist = enemyDist[0]
 
-		if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist:
-			enemyCosts = [-3, -1, 0]
+		if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist and red:
+			enemyCosts = [-10, -3, -1, 0]
 		else:
-			enemyCosts = [6, 3, 0]
+			enemyCosts = [50, 6, 3, 0]
 
-		if dist < 2:	#Get the appropriate cost for moving close to an enemy based on whether or not we're home
+		if dist < 2:
 			cost += enemyCosts[0]
-		elif dist < 4:
+		elif dist < 3:	#Get the appropriate cost for moving close to an enemy based on whether or not we're home
 			cost += enemyCosts[1]
-		else:
+		elif dist < 4:
 			cost += enemyCosts[2]
+		else:
+			cost += enemyCosts[3]
 
 		return cost + 1	#Add one to the cost for the actual movement
 
