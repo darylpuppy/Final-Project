@@ -31,7 +31,6 @@ def createTeam(firstIndex, secondIndex, isRed,
   team, initialized using firstIndex and secondIndex as their agent
   index numbers.  isRed is True if the red team is being created, and
   will be False if the blue team is being created.
-
   As a potentially helpful development aid, this function can take
   additional string-valued keyword arguments ("first" and "second" are
   such arguments in the case of this function), which will come from
@@ -64,11 +63,9 @@ class DummyAgent(CaptureAgent):
     This method handles the initial setup of the
     agent to populate useful fields (such as what team
     we're on).
-
     A distanceCalculator instance caches the maze distances
     between each pair of positions, so your agents can use:
     self.distancer.getDistance(p1, p2)
-
     IMPORTANT: This method may run for at most 15 seconds.
     """
 
@@ -138,7 +135,15 @@ class SmartAgent(CaptureAgent):
 	    while not queue.isEmpty():  #Continue looking until we have found the goal or tried looking everywhere
 	        curPosition = queue.pop()
 	        if isGoal(curPosition[0], gameState): #If the current state is the goal state, we can exit and move on to generating the path
-	            break;
+	            break
+
+	        	
+	            #isDead, depth = self.isDeadEnd(curPosition[0], gameState)
+	            #if (not isDead):
+	            #	break
+
+	            
+	            
 	        if curPosition[0] not in visited:
 	            visited.append(curPosition[0])    #If we haven't visited it, mark it as visited
 	            
@@ -174,7 +179,131 @@ class SmartAgent(CaptureAgent):
 
 	#Determines whether a pellet is on the given location
 	def isPellet(self, position, gameState):
+		
 		return position in self.getFood(gameState).asList()
+
+
+
+	def findDepth(self,position,walls, isWall1, isWall2, isWall3, isWall4):
+		x = position[0]
+		y = position[1]
+		
+
+		if (isWall2 and isWall4): 
+			i = 0
+			while((x-i)>0):
+				if (walls[x-i][y]): break
+				if (not walls[x-i][y-1] or not walls[x-i][y+1]): return i+1 # if up down are no longer wall
+				i+=1
+
+			i = 0
+			while((x+i)<walls.height):
+				if (walls[x+i][y]): break
+				if (not walls[x+i][y-1] or not walls[x+i][y+1]): return i+1 # if up down are no longer wall 
+				i+=1
+
+		# left right are walls
+		if (isWall1 and isWall3):
+			i = 0
+			while((y+i)<walls.width):
+				if (walls[x][y+i]): break
+				if (not walls[x-1][y+i] or not walls[x+1][y+i]): return i+1 # if up down are no longer walls, it is not a deadend
+				i+=1
+			i = 0
+			
+			while((y-i)>0):
+				if (walls[x][y-i]): break
+				if (not walls[x-1][y-i] or not walls[x+1][y-i]): return i+1 # if up down are no longer walls, it is not a deadend
+				i+=1
+
+			
+			"""
+
+	# a dead end is a place with 3 walls
+	# if a location is next to 2 walls and 1 deadend, it is a deadend
+	# if a location is next to 1 walls and 2 deadend, it is a deadend
+	# will be really hard to find depth?? 
+
+
+	def getDeadEnd(self, position, gameState):
+
+		walls = gameState.getWalls()
+
+		x = position[0]
+		y = position[1]
+		up = y+1, down = y-1, left = x-1, right = x+1
+
+		if ((up and down and left) or (up and down and right) or (up and left and right) or (down and left and right)):
+			return True
+
+		else return ((up and down and getDeadEnd(left, gameState)) or (up and getDeadEnd(down, gameState), left) or (getDeadEnd(up, gameState), down, left) or (up and down and getDeadEnd(right, gameState)) or (up and getDeadEnd(down, gameState), right) or (getDeadEnd(up, gameState), down, right) or (up and left and getDeadEnd(right, gameState)) or (up and getDeadEnd(left, gameState), right) or (getDeadEnd(up, gameState), left, right) or (down and left and getDeadEnd(right, gameState)) or (down and getDeadEnd(left, gameState), right) or (getDeadEnd(down, gameState), left, right))
+		return False
+
+"""
+
+	def isDeadEnd(self, position, gameState):
+		
+
+		walls = gameState.getWalls()
+
+		x = position[0]
+		y = position[1]
+		#print position
+
+		if (walls[x][y]): return 1
+		
+		# 1 3 are left right, 2 4 are up down
+		isWall1 = walls[x-1][y]
+		isWall2 = walls[x][y-1]
+		isWall3 = walls[x+1][y]
+		isWall4 = walls[x][y+1]
+
+		if (isWall1 and isWall2 and isWall3): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+		if (isWall1 and isWall2 and isWall4): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+		if (isWall1 and isWall3 and isWall4): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+		if (isWall2 and isWall3 and isWall4): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+
+		# if up and down are walls
+		# detect in the direction of left and right
+		# if reaching a tile WITH a left or right wall before reaching a tile WITHOUT up or down wall 
+		# this is a deadend
+
+		# up down are walls
+		if (isWall2 and isWall4): 
+			i = 0
+			while((x-i)>0):
+				if (walls[x-i][y]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+				if (not walls[x-i][y-1] or not walls[x-i][y+1]): break # if up down are no longer wall
+				i+=1
+
+			i = 0
+			while((x+i)<walls.height):
+				if (walls[x+i][y]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+				if (not walls[x+i][y-1] or not walls[x+i][y+1]): break # if up down are no longer wall 
+				i+=1
+
+			
+
+		# left right are walls
+		if (isWall1 and isWall3):
+			i = 0
+			while((y+i)<walls.width):
+				if (walls[x][y+i]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+				if (not walls[x-1][y+i] or not walls[x+1][y+i]): break # if up down are no longer walls, it is not a deadend
+				i+=1
+			i = 0
+			
+			while((y-i)>0):
+				if (walls[x][y-i]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+				if (not walls[x-1][y-i] or not walls[x+1][y-i]): break # if up down are no longer walls, it is not a deadend
+				i+=1
+
+		
+
+		
+		return 0,0
+
+	
 
 	#Gets the manhattan distance to the closest enemy
 	def enemyDistance(self, position, gameState):
@@ -288,10 +417,14 @@ class ThiefAgent(SmartAgent):
 		else:		#Otherwise, we look for the closest one
 			action = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)[0]
 
-		if self.isHome((position[0] + self.actions[action][0], position[1] + self.actions[action][1])):	#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
+		if self.isHome((position[0] + self.actions[action][0], position[1] + self.actions[action][1])):	
+		#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
 			self.hasPellet = False
-		if self.isPellet((position[0] + self.actions[action][0], position[1] + self.actions[action][1]), gameState):	#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
+		if self.isPellet((position[0] + self.actions[action][0], position[1] + self.actions[action][1]), gameState):	
+		#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
 			self.hasPellet = True
+
+		
 
 		return action
 
@@ -300,7 +433,7 @@ class ThiefAgent(SmartAgent):
 		enemyDists = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]
 		closeEnemy = min(enemyDists)
 		if self.hasPellet:
-			return (self.isHome(position) or self.isPellet(position, gameState)) and closeEnemy > 2
+			return (self.isHome(position) or self.isPellet(position, gameState)) and closeEnemy > 2 #how can enemy be > 2
 		else:
 			return self.isPellet(position, gameState)
 		"""if self.hasPellet:	#If we have a pellet, we're trying to go home
@@ -311,6 +444,9 @@ class ThiefAgent(SmartAgent):
 	#Finds the cost of moving to a given position
 	def offenseCost(self, position, gameState):
 		cost = 0
+
+		
+
 
 		partnerDist = util.manhattanDistance(gameState.getAgentPosition(self.teamIndices[0]), gameState.getAgentPosition(self.teamIndices[1]))
 		if partnerDist < 4:
@@ -348,8 +484,12 @@ class ThiefAgent(SmartAgent):
 
 		return cost + 1	#Add one to the cost for the actual movement
 
+
+
 	#Estimate for cost to reach closest pellet
 	def pelletHeuristic(self, position, gameState, initialPosition):
+
+
 		cost = 0
 
 		if self.enemyDist[0] < self.enemyDist[1]:
