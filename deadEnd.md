@@ -1,4 +1,4 @@
-# Final-Project
+
 
 A function called isDeadEnd is implemented, it returns a boolean and an int indicating the depth.
 Right now it is disabled, because I don't know how it should work with the rest of the cost/heuristic function to get the best result.
