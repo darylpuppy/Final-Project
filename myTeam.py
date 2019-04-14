@@ -135,12 +135,12 @@ class SmartAgent(CaptureAgent):
 	    while not queue.isEmpty():  #Continue looking until we have found the goal or tried looking everywhere
 	        curPosition = queue.pop()
 	        if isGoal(curPosition[0], gameState): #If the current state is the goal state, we can exit and move on to generating the path
-	            break
+	            #break
 
 	        	
-	            #isDead, depth = self.isDeadEnd(curPosition[0], gameState)
-	            #if (not isDead):
-	            #	break
+	            isDead, depth = self.isDeadEnd(curPosition[0], gameState)
+	            if (not isDead):
+	            	break
 
 	            
 	            
@@ -184,6 +184,36 @@ class SmartAgent(CaptureAgent):
 
 
 
+
+
+
+	def isDeadEnd(self, position, gameState):
+		walls = gameState.getWalls()
+		x = position[0]
+		y = position[1]
+
+		isDE, d = self.isDeadEndHelper((x,y), gameState)
+
+
+
+		if (isDE): return True, d
+		
+		isDE1,d1 = self.isDeadEndHelper((x-1,y), gameState)
+		isDE2,d2 = self.isDeadEndHelper((x,y-1), gameState)
+		isDE3,d3 = self.isDeadEndHelper((x+1,y), gameState)
+		isDE4,d4 = self.isDeadEndHelper((x,y+1), gameState)
+
+
+
+		if (isDE1 and walls[x+1][y] and (walls[x][y-1] or walls[x][y+1])): return True, d1+1
+		if (isDE2 and walls[x][y+1] and (walls[x-1][y] or walls[x+1][y])): return True, d2+1
+		if (isDE3 and walls[x-1]
+			[y] and (walls[x][y-1] or walls[x][y+1])): return True, d3+1
+		if (isDE4 and walls[x][y-1] and (walls[x-1][y] or walls[x+1][y])): return True, d4+1
+
+		return False, 0
+
+
 	def findDepth(self,position,walls, isWall1, isWall2, isWall3, isWall4):
 		x = position[0]
 		y = position[1]
@@ -197,7 +227,7 @@ class SmartAgent(CaptureAgent):
 				i+=1
 
 			i = 0
-			while((x+i)<walls.height):
+			while((x+i)<walls.width):
 				if (walls[x+i][y]): break
 				if (not walls[x+i][y-1] or not walls[x+i][y+1]): return i+1 # if up down are no longer wall 
 				i+=1
@@ -205,7 +235,7 @@ class SmartAgent(CaptureAgent):
 		# left right are walls
 		if (isWall1 and isWall3):
 			i = 0
-			while((y+i)<walls.width):
+			while((y+i)<walls.height):
 				if (walls[x][y+i]): break
 				if (not walls[x-1][y+i] or not walls[x+1][y+i]): return i+1 # if up down are no longer walls, it is not a deadend
 				i+=1
@@ -241,7 +271,7 @@ class SmartAgent(CaptureAgent):
 
 """
 
-	def isDeadEnd(self, position, gameState):
+	def isDeadEndHelper(self, position, gameState):
 		
 
 		walls = gameState.getWalls()
@@ -250,7 +280,7 @@ class SmartAgent(CaptureAgent):
 		y = position[1]
 		#print position
 
-		if (walls[x][y]): return 1
+		if (walls[x][y]): return False,-1
 		
 		# 1 3 are left right, 2 4 are up down
 		isWall1 = walls[x-1][y]
@@ -258,27 +288,30 @@ class SmartAgent(CaptureAgent):
 		isWall3 = walls[x+1][y]
 		isWall4 = walls[x][y+1]
 
-		if (isWall1 and isWall2 and isWall3): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
-		if (isWall1 and isWall2 and isWall4): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
-		if (isWall1 and isWall3 and isWall4): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
-		if (isWall2 and isWall3 and isWall4): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+		if (isWall1 and isWall2 and isWall3): return True, self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+		if (isWall1 and isWall2 and isWall4): return True,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+		if (isWall1 and isWall3 and isWall4): return True,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+		if (isWall2 and isWall3 and isWall4): return True,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
 
 		# if up and down are walls
 		# detect in the direction of left and right
 		# if reaching a tile WITH a left or right wall before reaching a tile WITHOUT up or down wall 
 		# this is a deadend
 
+		# up and down both no wall 
+		# up or down no wall 
+
 		# up down are walls
 		if (isWall2 and isWall4): 
 			i = 0
 			while((x-i)>0):
-				if (walls[x-i][y]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
-				if (not walls[x-i][y-1] or not walls[x-i][y+1]): break # if up down are no longer wall
+				if (walls[x-i][y]): return True,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+				if (not walls[x-i][y-1] or  not walls[x-i][y+1]): break # if up down are no longer wall
 				i+=1
 
 			i = 0
-			while((x+i)<walls.height):
-				if (walls[x+i][y]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+			while((x+i)<walls.width):
+				if (walls[x+i][y]): return True,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
 				if (not walls[x+i][y-1] or not walls[x+i][y+1]): break # if up down are no longer wall 
 				i+=1
 
@@ -287,21 +320,21 @@ class SmartAgent(CaptureAgent):
 		# left right are walls
 		if (isWall1 and isWall3):
 			i = 0
-			while((y+i)<walls.width):
-				if (walls[x][y+i]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+			while((y+i)<walls.height):
+				if (walls[x][y+i]): return True,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
 				if (not walls[x-1][y+i] or not walls[x+1][y+i]): break # if up down are no longer walls, it is not a deadend
 				i+=1
 			i = 0
 			
 			while((y-i)>0):
-				if (walls[x][y-i]): return 1,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
-				if (not walls[x-1][y-i] or not walls[x+1][y-i]): break # if up down are no longer walls, it is not a deadend
+				if (walls[x][y-i]): return True,self.findDepth(position, walls,isWall1, isWall2, isWall3, isWall4)
+				if (not walls[x-1][y-i] or  not walls[x+1][y-i]): break # if up down are no longer walls, it is not a deadend
 				i+=1
 
 		
 
 		
-		return 0,0
+		return False,0
 
 	
 
