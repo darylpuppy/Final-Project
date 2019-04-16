@@ -135,12 +135,12 @@ class SmartAgent(CaptureAgent):
 	    while not queue.isEmpty():  #Continue looking until we have found the goal or tried looking everywhere
 	        curPosition = queue.pop()
 	        if isGoal(curPosition[0], gameState): #If the current state is the goal state, we can exit and move on to generating the path
-	            #break
+	            break
 
 	        	
-	            isDead, depth = self.isDeadEnd(curPosition[0], gameState)
-	            if (not isDead):
-	            	break
+	            #isDead, depth = self.isDeadEnd(curPosition[0], gameState)
+	            #if (not isDead):
+	            	#break
 
 	            
 	            
@@ -177,14 +177,19 @@ class SmartAgent(CaptureAgent):
 
 		return dist if dist > 0 else dist * -1
 
+
+	#determine whether a location has a power pellet 
+
+	def isPowerPellet(self, position, gameState):
+		return position in self.getCapsules(gameState)
+
 	#Determines whether a pellet is on the given location
 	def isPellet(self, position, gameState):
+
+
 		
+		#return (position in self.getFood(gameState).asList()) or (position in self.getCapsules(gameState))
 		return position in self.getFood(gameState).asList()
-
-
-
-
 
 
 	def isDeadEnd(self, position, gameState):
@@ -254,22 +259,12 @@ class SmartAgent(CaptureAgent):
 	# if a location is next to 1 walls and 2 deadend, it is a deadend
 	# will be really hard to find depth?? 
 
+	# get succssor
+		# if the only position you can go is the one you came 
+		# how would you find depth? 
 
-	def getDeadEnd(self, position, gameState):
 
-		walls = gameState.getWalls()
-
-		x = position[0]
-		y = position[1]
-		up = y+1, down = y-1, left = x-1, right = x+1
-
-		if ((up and down and left) or (up and down and right) or (up and left and right) or (down and left and right)):
-			return True
-
-		else return ((up and down and getDeadEnd(left, gameState)) or (up and getDeadEnd(down, gameState), left) or (getDeadEnd(up, gameState), down, left) or (up and down and getDeadEnd(right, gameState)) or (up and getDeadEnd(down, gameState), right) or (getDeadEnd(up, gameState), down, right) or (up and left and getDeadEnd(right, gameState)) or (up and getDeadEnd(left, gameState), right) or (getDeadEnd(up, gameState), left, right) or (down and left and getDeadEnd(right, gameState)) or (down and getDeadEnd(left, gameState), right) or (getDeadEnd(down, gameState), left, right))
-		return False
-
-"""
+	"""
 
 	def isDeadEndHelper(self, position, gameState):
 		
@@ -350,6 +345,9 @@ class SmartAgent(CaptureAgent):
 			if nextPos not in walls:		#Make sure the Pacman wouldn't move into a wall
 				nextStates.append((nextPos, action, costFunction(position, gameState)))
 		return nextStates
+
+	
+
 
 #An implementation of SmartAgent that focuses solely on defense
 class DefenseAgent(SmartAgent):
@@ -463,12 +461,36 @@ class ThiefAgent(SmartAgent):
 
 	#Determines whether or not a position is an offensive goal state
 	def isGoal(self, position, gameState):
+
+		# closeEnemy = manhattan distance of the closer enemy 
+		# if self has pellet 
+		# if self is home and enemy distance 2: is goal
+		# if self is pellet and enemy distance 2: is goal
+		# if self no pellet
+		# goal state is a pellet 
+
+		enemyMazeDists = [self.distancer.getDistance(position, self.enemyPos[i]) for i in range(2)]
+		closeMazeEnemy = min(enemyMazeDists) 
+		isDeadEnd, depth = self.isDeadEnd(position, gameState)
+
+		# now it considers the power pellet as a food pellet 
+		# but we shouldn't be going home if the only thing we have is a power pellet. 
+		# how do we take this into consideration??????
+
+		isPellet = self.isPellet(position, gameState) or self.isPowerPellet(position, gameState)
+		getThisPellet = True
+
+		if (isDeadEnd and depth*2+2 > closeMazeEnemy):
+			getThisPellet = False
+		
+
+
 		enemyDists = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]
 		closeEnemy = min(enemyDists)
 		if self.hasPellet:
-			return (self.isHome(position) or self.isPellet(position, gameState)) and closeEnemy > 2 #how can enemy be > 2
+			return (self.isHome(position) or (isPellet and getThisPellet)) and closeEnemy > 2 #how can enemy be > 2
 		else:
-			return self.isPellet(position, gameState)
+			return (isPellet and getThisPellet)
 		"""if self.hasPellet:	#If we have a pellet, we're trying to go home
 			return self.isHome(position)
 		else:	#Otherwise we're trying to get one
