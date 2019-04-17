@@ -160,9 +160,11 @@ class SmartAgent(CaptureAgent):
 	            
 	    ans = []
 	    curPosition = curPosition[0]
+	    print curPosition
 	    while curPosition != position:  #Until we reach the starting state, push actions into the beginning of the answer
 	        ans.insert(0, path[curPosition][1])
 	        curPosition = path[curPosition][0]
+
 	    return ans
 
 	#Determine if the Pacman in on it's home side or on the enemies side
@@ -201,7 +203,7 @@ class SmartAgent(CaptureAgent):
 		return position in deadEndMap.asList()
 
 	def findDepth(self, position, costFunction, gameState):
-		curState = self.breadthFirstSearch(position, costFunction , gameState)
+		curState = self.breadthFirstSearch(position, costFunction, gameState)
 
 		#return 1
 		#print (self.distancer.getDistance(position, curState))
@@ -235,7 +237,7 @@ class SmartAgent(CaptureAgent):
 	         	break;
 
 	        
-	        successors = self.getSuccessors(position, walls, costFunction, gameState)
+	        successors = self.getSuccessors(curState, walls, costFunction, gameState)
 	        for node in successors:
 	            if node[0] not in visited:
 	                path[node[0]] = [curState, node[1]] #Mark down which state we were in before reaching this one and which action was taken to reach it
@@ -402,8 +404,6 @@ class ThiefAgent(SmartAgent):
 	def registerInitialState(self, gameState):
 		SmartAgent.registerInitialState(self, gameState)
 
-
-
 		self.hasPellet = False
 		self.start = gameState.getAgentPosition(self.index)
 
@@ -413,15 +413,25 @@ class ThiefAgent(SmartAgent):
 	#Gets the best action to take
 	def chooseAction(self, gameState):
 		self.actionPrep(gameState)
-		pellets = self.getFood(gameState).asList()
 		position = gameState.getAgentPosition(self.index)
+		self.enemyMazeDists = [self.distancer.getDistance(position, self.enemyPos[i]) for i in range(2)]
+		self.closeMazeEnemy = min(self.enemyMazeDists)
+
+		pellets = self.getFood(gameState).asList()
+		copy = self.getFood(gameState).asList()
+		for pellet in pellets:
+			if self.findDepth(pellet, self.offenseCost, gameState) * 2 + 1 > self.closeMazeEnemy:
+				copy.remove(pellet)
+		if len(copy) == 0:
+			self.hasPellet = True
+
 		if position == self.start:		#If we're at the starting position, we were killed so we don't have a pellet
 			self.hasPellet = False
 
-		if self.hasPellet:		#If we have a pellet, we want to move to the home side
-			action = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)[0]
-		else:		#Otherwise, we look for the closest one
-			action = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)[0]
+		actions = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)
+		if len(actions) == 0:
+			return "Stop"
+		action = actions[0]
 
 		if self.isHome((position[0] + self.actions[action][0], position[1] + self.actions[action][1])):	
 		#If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
@@ -444,13 +454,12 @@ class ThiefAgent(SmartAgent):
 		# if self no pellet
 		# goal state is a pellet 
 
-		enemyMazeDists = [self.distancer.getDistance(position, self.enemyPos[i]) for i in range(2)]
-		closeMazeEnemy = min(enemyMazeDists) 
+
 		isDeadEnd = self.isDeadEnd(position, self.deadEndMap)
 
 		depth = 0
 		
-		if (isDeadEnd):
+		if (isDeadEnd) and self.isPellet(position, gameState):
 			#print(depth)
 			depth = self.findDepth(position, self.offenseCost, gameState)
 
@@ -461,7 +470,7 @@ class ThiefAgent(SmartAgent):
 		isPellet = self.isPellet(position, gameState) or self.isPowerPellet(position, gameState)
 		getThisPellet = True
 
-		if (isDeadEnd and depth*2+2 > closeMazeEnemy):
+		if (isDeadEnd and depth*2 + 1 > self.closeMazeEnemy):
 			getThisPellet = False
 		
 
@@ -485,7 +494,7 @@ class ThiefAgent(SmartAgent):
 
 
 		partnerDist = util.manhattanDistance(gameState.getAgentPosition(self.teamIndices[0]), gameState.getAgentPosition(self.teamIndices[1]))
-		if partnerDist < 4:
+		if partnerDist < 3:
 			cost += 10
 
 		enemyDist = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]	#Can be used later to move towards an enemy on the home side
@@ -507,7 +516,7 @@ class ThiefAgent(SmartAgent):
 		if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist and red:
 			enemyCosts = [-10, -3, -1, 0]
 		else:
-			enemyCosts = [50, 6, 3, 0]
+			enemyCosts = [50, 20, 10, 0]
 
 		if dist < 2:
 			cost += enemyCosts[0]
