@@ -37,8 +37,10 @@ def createTeam(firstIndex, secondIndex, isRed,
   any extra arguments, so you should make sure that the default
   behavior is what you want for the nightly contest.
   """
-
-  return [eval(first)(firstIndex), eval(second)(secondIndex)]
+  if isRed:
+  	return [eval(first)(firstIndex), eval(second)(secondIndex)]
+  else:
+  	return [eval('ThiefAgent')(firstIndex), eval('DefenseAgent')(secondIndex)]
 
 ##########
 # Agents #
@@ -111,9 +113,11 @@ class SmartAgent(CaptureAgent):
 		if position[0] < boundary:
 			self.leftEdge = 0
 			self.rightEdge = boundary
+			self.boundary = boundary - 1
 		else:
 			self.leftEdge = boundary
 			self.rightEdge = gameMap.width
+			self.boundary = boundary
 
 		
 
@@ -150,11 +154,21 @@ class SmartAgent(CaptureAgent):
 	            
 	    ans = []
 	    curPosition = curPosition[0]
+	    goal = curPosition
+	    cost = 0
+	    if curPosition != position:
+			cost = path[curPosition][2]
+
 	    while curPosition != position:  #Until we reach the starting state, push actions into the beginning of the answer
 	        ans.insert(0, path[curPosition][1])
 	        curPosition = path[curPosition][0]
 
-	    return ans
+	    
+	    #print goal, ans, cost
+	    #if cost > 100:
+	    	#raw_input()
+
+	    return ans, goal
 
 	#Determine if the Pacman in on it's home side or on the enemies side
 	def isHome(self, position):
@@ -186,6 +200,16 @@ class SmartAgent(CaptureAgent):
 
 	def isDeadEnd(self, position, deadEndMap):
 		return position in deadEndMap.asList()
+
+	def getFeasiblePellets(self, gameState, distance):
+		pellets = self.getFood(gameState).asList()
+		copy = self.getFood(gameState).asList()
+		for pellet in pellets:
+			if self.findDepth(pellet, self.offenseCost, gameState) * 2 + 1 > self.closeMazeEnemy:
+				copy.remove(pellet)
+
+		return copy
+
 
 	def findDepth(self, position, costFunction, gameState):
 		curState = self.breadthFirstSearch(position, costFunction, gameState)
@@ -267,6 +291,7 @@ class SmartAgent(CaptureAgent):
 class SwitchAgent(SmartAgent):
 	onOffense = [True, False]
 	deadEndMap = None
+	marked = [None, None]
 
 	def registerInitialState(self, gameState):
 		SmartAgent.registerInitialState(self, gameState)
@@ -275,26 +300,83 @@ class SwitchAgent(SmartAgent):
 		self.start = gameState.getAgentPosition(self.index)
 
 		self.deadEndMap = self.createDeadEndMap(gameState)
+		self.goal = None
+
+	def setOffenseDefense(self, gameState):
+		#print SwitchAgent.onOffense
+		myState = gameState.getAgentState(self.index)
+		if myState.scaredTimer > 0:
+			#print "Scared, so both on offense"
+			SwitchAgent.onOffense = [True, True]
+			SwitchAgent.marked = [None, None]
+		elif SwitchAgent.onOffense[0] == SwitchAgent.onOffense[1]:
+			#print "We're the same"
+			if self.getScore(gameState) <= 0 or len(self.feasiblePellets) > 0:
+				#print "Someone's gong on offense"
+				pos1 = gameState.getAgentPosition(self.teamIndices[0])
+				pos2 = gameState.getAgentPosition(self.teamIndices[1])
+				if self.isHome(pos1) and self.isHome(pos2):
+					if self.distFromHome(pos1) >= self.distFromHome(pos2):
+						#print "It's player 1"
+						SwitchAgent.onOffense = [True, False]
+						SwitchAgent.marked[0] = None
+					else:
+						#print "It's player 2"
+						SwitchAgent.onOffense = [False, True]
+						SwitchAgent.marked[1] = None
+				elif self.isHome(pos1):
+					SwitchAgent.onOffense = [False, True]
+					SwitchAgent.marked[1] = None
+				elif self.isHome(pos2):
+					SwitchAgent.onOffense = [True, False]
+					SwitchAgent.marked[0] = None
+				else:
+					if self.distFromHome(pos1) >= self.distFromHome(pos2):
+						SwitchAgent.onOffense = [True, False]
+						SwitchAgent.marked[0] = None
+					else:
+						SwitchAgent.onOffense = [False, True]
+						SwitchAgent.marked[1] = None
+			else:
+				#print "Double defense"
+				SwitchAgent.onOffense = [False, False]
+		elif len(self.feasiblePellets) == 0 and SwitchAgent.onOffense[self.teamOrder] and self.getScore(gameState) > 0:
+			#print "No path to success"
+			SwitchAgent.onOffense = [False, False]
+		#else:
+			#print "It's staying the same"
+
+		#print SwitchAgent.onOffense
+
 
 	def chooseAction(self, gameState):
 		self.actionPrep(gameState)
 
 		position = gameState.getAgentPosition(self.index)
+		if self.isHome(position):
+			self.hasPellet = False
+		if position == self.goal:
+			self.goal = None
 		self.enemyMazeDists = [self.distancer.getDistance(position, self.enemyPos[i]) for i in range(2)]
 		self.closeMazeEnemy = min(self.enemyMazeDists)
 
-		pellets = self.getFood(gameState).asList()
-		copy = self.getFood(gameState).asList()
-		for pellet in pellets:
-			if self.findDepth(pellet, self.offenseCost, gameState) * 2 + 1 > self.closeMazeEnemy:
-				copy.remove(pellet)
-		if len(copy) == 0:
-			self.hasPellet = True
+		self.feasiblePellets = self.getFeasiblePellets(gameState, self.closeMazeEnemy)
+		self.setOffenseDefense(gameState)
 
 		if self.onOffense[self.teamOrder]:
-			actions = self.aStarSearch(gameState, self.offenseGoal, self.offenseHeuristic, self.offenseCost)
+			actions, goal = self.aStarSearch(gameState, self.offenseGoal, self.offenseHeuristic, self.offenseCost)
 		else:
-			actions = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic, self.defenseCost)
+			actions, goal = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic, self.defenseCost)
+			op1Pos = gameState.getAgentPosition(self.opponentIndices[0])
+			op2Pos = gameState.getAgentPosition(self.opponentIndices[1])
+			if op1Pos == goal:
+				self.marked[self.teamOrder] = 0
+			elif op2Pos == goal:
+				self.marked[self.teamOrder] = 1
+			elif util.manhattanDistance(goal, op1Pos) < util.manhattanDistance(goal, op2Pos):
+				self.marked[self.teamOrder] = 0
+			else:
+				self.marked[self.teamOrder] = 1
 
 		if len(actions) == 0:
 			return "Stop"
@@ -318,7 +400,50 @@ class SwitchAgent(SmartAgent):
 		# if self no pellet
 		# goal state is a pellet 
 
+		"""if self.hasPellet:
+			self.goal = None
+			return self.isHome(position) or position in self.feasiblePellets
+		elif len(self.feasiblePellets) > 0:
+			self.goal = None
+			return position in self.feasiblePellets
+		else:
+			start = gameState.getAgentPosition(self.index)
+			if self.isHome(start):
+				if self.goal == None:
+					gameMap = gameState.getWalls()
+					option1 = gameMap.height * 2 / 3
+					option2 = gameMap.height / 3
+					gameMap = gameMap.asList()
+					dist = 0
+					while True:
+						if (self.boundary, option1 + dist) not in gameMap:
+							option1 = (self.boundary, option1 + dist)
+							break
+						elif (self.boundary, option1 - dist) not in gameMap:
+							option1 = (self.boundary, option1 - dist)
+							break
+						else:
+							dist += 1
 
+					while True:
+						if (self.boundary, option2 + dist) not in gameMap:
+							option2 = (self.boundary, option2 + dist)
+							break
+						elif (self.boundary, option2 - dist) not in gameMap:
+							option2 = (self.boundary, option2 - dist)
+							break
+						else:
+							dist += 1
+
+					if util.manhattanDistance(start, option1) > util.manhattanDistance(start, option2):
+						self.goal = option1
+					else:
+						self.goal = option2
+
+				return position == self.goal
+			else:
+				self.goal = None
+				return self.isHome(position)"""
 		isDeadEnd = self.isDeadEnd(position, self.deadEndMap)
 
 		depth = 0
@@ -340,7 +465,7 @@ class SwitchAgent(SmartAgent):
 		enemyDists = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]
 		closeEnemy = min(enemyDists)
 		if self.hasPellet:
-			return (self.isHome(position) or (isPellet and getThisPellet)) and closeEnemy > 2 #how can enemy be > 2
+			return (self.isHome(position) or (isPellet and getThisPellet)) #and closeEnemy > 2 #how can enemy be > 2
 		else:
 			return (isPellet and getThisPellet)
 
@@ -367,19 +492,21 @@ class SwitchAgent(SmartAgent):
 				closeEnemy = self.enemyPos[0]
 				dist = enemyDist[0]
 
-		if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist and red:
-			enemyCosts = [-10, -3, -1, 0]
+		if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist:
+			enemyCosts = [-10, -5, -3, -1, 0]
 		else:
-			enemyCosts = [50, 20, 10, 0]
+			enemyCosts = [9999, 100, 10, 5, 0]
 
-		if dist < 2:
+		if dist < 1:
 			cost += enemyCosts[0]
-		elif dist < 3:	#Get the appropriate cost for moving close to an enemy based on whether or not we're home
+		elif dist < 2:
 			cost += enemyCosts[1]
-		elif dist < 4:
+		elif dist < 3:	#Get the appropriate cost for moving close to an enemy based on whether or not we're home
 			cost += enemyCosts[2]
-		else:
+		elif dist < 4:
 			cost += enemyCosts[3]
+		else:
+			cost += enemyCosts[4]
 
 		return cost + 1	#Add one to the cost for the actual movement
 
@@ -406,8 +533,18 @@ class SwitchAgent(SmartAgent):
 		return cost + 1	#Add one to the cost for the actual movement
 
 	def defenseGoal(self, position, gameState):
-		if self.isHome(self.enemyPos[0]) or self.isHome(self.enemyPos[1]):		#If either enemy is on the home side, they are the only goal states
-			return position in self.enemyPos and self.isHome(position)
+		if self.marked[(self.teamOrder - 1) * -1] == 0:
+			enemyPos = [self.enemyPos[1]]
+		elif self.marked[(self.teamOrder - 1) * -1] == 1:
+			enemyPos = [self.enemyPos[0]]
+		else:
+			enemyPos = self.enemyPos
+		kill = False
+		for goal in enemyPos:
+			if self.isHome(goal):
+				kill = True
+		if kill:
+			return position in enemyPos and self.isHome(position)
 		else:		#Try to move to a position on the home side closest to the enemy
 			walls = gameState.getWalls()
 			height = walls.height
@@ -423,7 +560,7 @@ class SwitchAgent(SmartAgent):
 			for i in range(height):		#Loop through all legal positions on the boundary
 				if (boundary, i) in walls:
 					continue
-				closestEnemy = min(util.manhattanDistance((boundary, i), self.enemyPos[j]) for j in range(2))
+				closestEnemy = min(util.manhattanDistance((boundary, i), enemyPos[j]) for j in range(len(enemyPos)))
 				if closestEnemy < bestDist:
 					bestSpot = (boundary, i)
 					bestDist = closestEnemy
@@ -431,11 +568,13 @@ class SwitchAgent(SmartAgent):
 
 	def defenseCost(self, position, gameState):
 		if not self.isHome(position):		#If we're not home, getting close to an enemy is very bad
-			closestEnemy = min(self.enemyDist)
-			if closestEnemy < 3:		#All these values were arbitrarily chosen
-				return 9
-			elif closestEnemy < 5:
-				return 4
+			closestEnemy = min(util.manhattanDistance(position, self.enemyPos[i]) for i in range(2))
+			if closestEnemy < 1:
+				return 9999
+			if closestEnemy < 2:		#All these values were arbitrarily chosen
+				return 100
+			elif closestEnemy < 3:
+				return 20
 			else:
 				return 1		#If there is no nearby enemy, there is no issue going onto the opponents side
 		else:
@@ -473,7 +612,7 @@ class DefenseAgent(SmartAgent):
 	#Method that figures out what the best action would be
 	def chooseAction(self, gameState):
 		self.actionPrep(gameState)
-		actions = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic, self.defenseCost)		#Use the A* search to find the best path, to a goal, given those functions
+		actions, goal = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic, self.defenseCost)		#Use the A* search to find the best path, to a goal, given those functions
 		if len(actions) == 0:		#If the length of the actions is 0, we are already at a goal state, so just stay there
 			return "Stop"
 		else:		#Otherwise, take teh first step in reaching the goal
@@ -572,7 +711,7 @@ class ThiefAgent(SmartAgent):
 		if position == self.start:		#If we're at the starting position, we were killed so we don't have a pellet
 			self.hasPellet = False
 
-		actions = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)
+		actions, goal = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)
 		if len(actions) == 0:
 			return "Stop"
 		action = actions[0]
@@ -648,7 +787,7 @@ class ThiefAgent(SmartAgent):
 				closeEnemy = self.enemyPos[0]
 				dist = enemyDist[0]
 
-		if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist and red:
+		if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist:
 			enemyCosts = [-10, -3, -1, 0]
 		else:
 			enemyCosts = [50, 20, 10, 0]
