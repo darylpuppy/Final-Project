@@ -38,10 +38,7 @@ def createTeam(firstIndex, secondIndex, isRed,
     any extra arguments, so you should make sure that the default
     behavior is what you want for the nightly contest.
     """
-    if isRed:
-        return [eval(first)(firstIndex), eval(second)(secondIndex)]
-    else:
-        return [eval('ThiefAgent')(firstIndex), eval('DefenseAgent')(secondIndex)]
+    return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 
 ##########
@@ -221,24 +218,20 @@ class SmartAgent(CaptureAgent):
                                                                1].scaredTimer > 0):  # if not scared (normal state)
                 if self.findDepth(pellet, self.offenseCost,
                                   gameState) * 2 + 1 > self.closeMazeEnemy:  # If the pellet is too deep, remove it from the list
-                    copy.remove(pellet)
-                    if pellet in capsules:
-                        print "Removing capsule because of non-scared distance"
-                        print self.findDepth(pellet, self.offenseCost, gameState), self.closeMazeEnemy, pellet
+                    if pellet not in capsules:
+                        copy.remove(pellet)
             elif (self.distancer.getDistance(myPos, self.enemyPos[0]) < self.distancer.getDistance(myPos, self.enemyPos[
                 1])):  # find the closer ghost
                 if (enemyStates[0].scaredTimer <= self.findDepth(pellet, self.offenseCost,
                                                                  gameState) * 2 + 1):  # if enemy will be scared longer than we can get out of the deadend
-                    copy.remove(pellet)
-                    if pellet in capsules:
-                        print "Removing capsule because of depth of scared enemy"
+                    if pellet not in capsules:
+                        copy.remove(pellet)
 
             else:
                 if (enemyStates[1].scaredTimer <= self.findDepth(pellet, self.offenseCost,
                                                                  gameState) * 2 + 1):  # if enemy will be scared longer than we can get out of the deadend
-                    copy.remove(pellet)
-                    if pellet in capsules:
-                       print "Removing capsule because of depth of scared enemy"
+                    if pellet not in capsules:
+                        copy.remove(pellet)
 
         return copy
 
@@ -423,13 +416,17 @@ class SwitchAgent(SmartAgent):
                 actions, goal = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic, self.defenseCost)
 
             if self.enemyPos[0] == goal:  # Determine which enemy this agent is targeting and mark it
-                self.marked[self.teamOrder] = 0
+                SwitchAgent.marked[self.teamOrder] = 0
             elif self.enemyPos[1] == goal:
-                self.marked[self.teamOrder] = 1
+                SwitchAgent.marked[self.teamOrder] = 1
+            elif SwitchAgent.marked[self.teamOrder * -1 + 1] == 0:
+                SwitchAgent.marked[self.teamOrder] = 1
+            elif SwitchAgent.marked[self.teamOrder * -1 + 1] == 1:
+                SwitchAgent.marked[self.teamOrder] = 0
             elif util.manhattanDistance(goal, self.enemyPos[0]) < util.manhattanDistance(goal, self.enemyPos[1]):
-                self.marked[self.teamOrder] = 0
+                SwitchAgent.marked[self.teamOrder] = 0
             else:
-                self.marked[self.teamOrder] = 1
+                SwitchAgent.marked[self.teamOrder] = 1
 
         if len(actions) == 0:  # If there are no actions to reach the goal state, we are already in the goal state
             return "Stop"  # So don't move
@@ -582,15 +579,16 @@ class SwitchAgent(SmartAgent):
 
     # Determines whether or not a defensive agent should be moving towards this position
     def defenseGoal(self, position, gameState):
-        if self.marked[(self.teamOrder - 1) * -1] == 0:  # Don't consider enemies marked by a partner
+        if SwitchAgent.marked[(self.teamOrder - 1) * -1] == 0:  # Don't consider enemies marked by a partner
             enemyPos = [self.enemyPos[1]]
             enemyStates = [gameState.getAgentState(self.opponentIndices[1])]
-        elif self.marked[(self.teamOrder - 1) * -1] == 1:
+        elif SwitchAgent.marked[(self.teamOrder - 1) * -1] == 1:
             enemyPos = [self.enemyPos[0]]
             enemyStates = [gameState.getAgentState(self.opponentIndices[0])]
         else:
             enemyPos = self.enemyPos
             enemyStates = [gameState.getAgentState(self.opponentIndices[i]) for i in range(2)]
+
         kill = False  # Used to determine if we are trying to kill an opponent
         for goal in enemyPos:
             if self.isHome(goal):  # If any of the enemies we are considering are home, we are trying to kill them
@@ -687,250 +685,3 @@ class SwitchAgent(SmartAgent):
             elif closeEnemy < 5:
                 estimate += 4
             return estimate
-
-
-# An implementation of SmartAgent that focuses solely on defense
-class DefenseAgent(SmartAgent):
-    def registerInitialState(self, gameState):
-        SmartAgent.registerInitialState(self, gameState)
-
-    # Method that figures out what the best action would be
-    def chooseAction(self, gameState):
-        self.actionPrep(gameState)
-        actions, goal = self.aStarSearch(gameState, self.defenseGoal, self.defenseHeuristic,
-                                         self.defenseCost)  # Use the A* search to find the best path, to a goal, given those functions
-        if len(actions) == 0:  # If the length of the actions is 0, we are already at a goal state, so just stay there
-            return "Stop"
-        else:  # Otherwise, take teh first step in reaching the goal
-            return actions[0]
-
-    # A function that estimates the distance to a defensive goal state
-    def defenseHeuristic(self, position, gameState, initialPosition):
-        if self.isHome(self.enemyPos[0]) or self.isHome(self.enemyPos[
-                                                            1]):  # If either of the enemies is on your home side, return the manhattan distance to the closest of them
-            return min(
-                util.manhattanDistance(position, self.enemyPos[i]) for i in range(2) if self.isHome(self.enemyPos[i]))
-        else:  # Otherwise, return the manhattan distance to the location on the home side closest to one of them
-            estimate = 0  # The estimated distance
-            if self.leftEdge == 0:  # If leftEdge is 0, rightEdge marks the boundary we don't want to cross
-                if position[0] < self.rightEdge:  # Get the straight line distance to the border
-                    estimate += self.rightEdge - position[0]
-                else:
-                    estimate += position[0] - self.rightEdge
-            else:
-                if position[
-                    0] > self.leftEdge:  # Same as above, but this time leftEdge is the boundary we don't want to cross
-                    estimate += position[0] - self.leftEdge
-                else:
-                    estimate += self.leftEdge - position[0] + 10
-
-            closeEnemy = max(self.enemyDist)
-            if closeEnemy < 3:
-                estimate += 9
-            elif closeEnemy < 5:
-                estimate += 4
-            return estimate
-
-    # Determines whether a position is a defensive goal state
-    def defenseGoal(self, position, gameState):
-        if self.isHome(self.enemyPos[0]) or self.isHome(
-                self.enemyPos[1]):  # If either enemy is on the home side, they are the only goal states
-            return position in self.enemyPos and self.isHome(position)
-        else:  # Try to move to a position on the home side closest to the enemy
-            walls = gameState.getWalls()
-            height = walls.height
-            walls = walls.asList()
-            if self.leftEdge == 0:
-                boundary = self.rightEdge - 1
-            else:
-                boundary = self.leftEdge
-
-            # Search for the best spot according to the above rule
-            bestSpot = (boundary, 0)
-            bestDist = 999999
-            for i in range(height):  # Loop through all legal positions on the boundary
-                if (boundary, i) in walls:
-                    continue
-                closestEnemy = min(util.manhattanDistance((boundary, i), self.enemyPos[j]) for j in range(2))
-                if closestEnemy < bestDist:
-                    bestSpot = (boundary, i)
-                    bestDist = closestEnemy
-            return position == bestSpot
-
-    # Returns the cost of moving to a position
-    def defenseCost(self, position, gameState):
-        if not self.isHome(position):  # If we're not home, getting close to an enemy is very bad
-            closestEnemy = min(self.enemyDist)
-            if closestEnemy < 3:  # All these values were arbitrarily chosen
-                return 9
-            elif closestEnemy < 5:
-                return 4
-            else:
-                return 1  # If there is no nearby enemy, there is no issue going onto the opponents side
-        else:
-            return 1
-
-
-# Agent that crosses onto the other side to steal one pellet at a time
-class ThiefAgent(SmartAgent):
-
-    def registerInitialState(self, gameState):
-        SmartAgent.registerInitialState(self, gameState)
-
-        self.hasPellet = False
-        self.start = gameState.getAgentPosition(self.index)
-
-        self.deadEndMap = self.createDeadEndMap(gameState)
-
-    # print(deadEndMap)
-
-    # Gets the best action to take
-    def chooseAction(self, gameState):
-        self.actionPrep(gameState)
-        position = gameState.getAgentPosition(self.index)
-        self.enemyMazeDists = [self.distancer.getDistance(position, self.enemyPos[i]) for i in range(2)]
-        self.closeMazeEnemy = min(self.enemyMazeDists)
-
-        pellets = self.getFood(gameState).asList()
-        copy = self.getFood(gameState).asList()
-        for pellet in pellets:
-            if self.findDepth(pellet, self.offenseCost, gameState) * 2 + 1 > self.closeMazeEnemy:
-                copy.remove(pellet)
-        if len(copy) == 0:
-            self.hasPellet = True
-
-        if position == self.start:  # If we're at the starting position, we were killed so we don't have a pellet
-            self.hasPellet = False
-
-        actions, goal = self.aStarSearch(gameState, self.isGoal, self.pelletHeuristic, self.offenseCost)
-        if len(actions) == 0:
-            return "Stop"
-        action = actions[0]
-
-        if self.isHome((position[0] + self.actions[action][0], position[1] + self.actions[action][1])):
-            # If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
-            self.hasPellet = False
-        if self.isPellet((position[0] + self.actions[action][0], position[1] + self.actions[action][1]), gameState):
-            # If we've reached a goal state, we either pick up or drop off a pellet. Either way, hasPellet is notted
-            self.hasPellet = True
-
-        return action
-
-    # Determines whether or not a position is an offensive goal state
-    def isGoal(self, position, gameState):
-
-        # closeEnemy = manhattan distance of the closer enemy
-        # if self has pellet
-        # if self is home and enemy distance 2: is goal
-        # if self is pellet and enemy distance 2: is goal
-        # if self no pellet
-        # goal state is a pellet
-
-        isDeadEnd = self.isDeadEnd(position, self.deadEndMap)
-
-        depth = 0
-
-        if (isDeadEnd) and self.isPellet(position, gameState) or self.isPowerPellet(position, gameState):
-            # print(depth)
-            depth = self.findDepth(position, self.offenseCost, gameState)
-
-        # now it considers the power pellet as a food pellet
-        # but we shouldn't be going home if the only thing we have is a power pellet.
-        # how do we take this into consideration??????
-
-        isPellet = self.isPellet(position, gameState) or self.isPowerPellet(position, gameState)
-        getThisPellet = True
-
-        if (isDeadEnd and depth * 2 + 1 > self.closeMazeEnemy):
-            getThisPellet = False
-
-        # if enemies are scared, we can safely go into deadends
-        enemyStates = [gameState.getAgentState(self.opponentIndices[i]) for i in range(2)]
-        tempDist = [self.distancer.getDistance(gameState.getAgentPosition(self.index), self.enemyPos[0])]
-        tempIndex = tempDist.index(min(tempDist))
-
-        if (enemyStates[
-            tempIndex].scaredTimer > depth * 2 + 1):  # if enemy will be scared longer than we can get out of the deadend
-            # print enemyStates[tempIndex].scaredTimer > depth*2+1
-            getThisPellet = True
-
-        enemyDists = [util.manhattanDistance(position, self.enemyPos[i]) for i in range(2)]
-        closeEnemy = min(enemyDists)
-        if self.hasPellet:
-            return (self.isHome(position) or (isPellet and getThisPellet)) and closeEnemy > 2  # how can enemy be > 2
-        else:
-            return (isPellet and getThisPellet)
-
-    # Finds the cost of moving to a given position
-    def offenseCost(self, position, gameState):
-        cost = 0
-
-        partnerDist = util.manhattanDistance(gameState.getAgentPosition(self.teamIndices[0]),
-                                             gameState.getAgentPosition(self.teamIndices[1]))
-        if partnerDist < 2:
-            cost += 15
-
-        enemyDist = [util.manhattanDistance(position, self.enemyPos[i]) for i in
-                     range(2)]  # Can be used later to move towards an enemy on the home side
-        if self.isHome(self.enemyPos[0]) == self.isHome(self.enemyPos[1]):
-            if enemyDist[0] < enemyDist[1]:
-                closeEnemy = self.enemyPos[0]
-                dist = enemyDist[0]
-            else:
-                closeEnemy = self.enemyPos[1]
-                dist = enemyDist[1]
-        else:
-            if self.isHome(self.enemyPos[0]):
-                closeEnemy = self.enemyPos[1]
-                dist = enemyDist[1]
-            else:
-                closeEnemy = self.enemyPos[0]
-                dist = enemyDist[0]
-
-        if self.isHome(closeEnemy) and self.distFromHome(closeEnemy) > dist:
-            enemyCosts = [-10, -3, -1, 0]
-        else:
-            enemyCosts = [50, 20, 10, 0]
-
-        if dist < 2:
-            cost += enemyCosts[0]
-        elif dist < 3:  # Get the appropriate cost for moving close to an enemy based on whether or not we're home
-            cost += enemyCosts[1]
-        elif dist < 4:
-            cost += enemyCosts[2]
-        else:
-            cost += enemyCosts[3]
-
-        return cost + 1  # Add one to the cost for the actual movement
-
-    # Estimate for cost to reach closest pellet
-    def pelletHeuristic(self, position, gameState, initialPosition):
-
-        cost = 0
-
-        if self.enemyDist[0] < self.enemyDist[1]:
-            closeEnemy = self.enemyPos[0]
-            enemyDist = self.enemyDist[0]
-            closerEnemyIndex = 0
-        else:
-            closeEnemy = self.enemyPos[1]
-            enemyDist = self.enemyDist[1]
-            closerEnemyIndex = 1
-
-        enemyStates = [gameState.getAgentState(self.opponentIndices[i]) for i in range(2)]
-        myPos = gameState.getAgentPosition(self.index)
-
-        if (enemyStates[closerEnemyIndex].scaredTimer <= 0):  # if not scared (normal state)
-            enemyCosts = [30, 15, 0]
-            if enemyDist < 2:  # Get the appropriate cost for moving close to an enemy based on whether or not we're home
-                cost += enemyCosts[0]
-            elif enemyDist < 4:
-                cost += enemyCosts[1]
-            else:
-                cost += enemyCosts[2]
-
-        else:  # if scared
-            cost += 0
-
-        return 0
-        return cost + 1  # Add one to the cost for the actual movement
